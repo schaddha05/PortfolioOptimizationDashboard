@@ -97,7 +97,7 @@ function optimisePortfolio(risk: RiskLevel, current: Allocation[]): Allocation[]
 
 async function fetchGBoostRecs(payload: { holdings: Holding[]; risk: RiskLevel; target: number }) {
   try {
-    const res = await fetch("/api/recommend", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    const res = await fetch("/api/recommend-trades", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     if (!res.ok) throw new Error("API fail");
     const json = await res.json();
     return json.suggestions as { ticker: string; reason: string; shares: number; price: number }[];
@@ -118,17 +118,20 @@ export default function PortfolioDashboard() {
   const [risk,setRisk]=useState<RiskLevel>("medium");
   const [target,setTarget]=useState(13.5);
   const [metrics,setMetrics]=useState<Metrics|null>(null);
-  const [recs,setRecs]=useState<{ticker:string;reason:string}[]>([]);
+  const [recs,setRecs]=useState<{ ticker: string; reason: string; price: number; shares: number }[]>([]);
 
   // fetch live prices on ticker change/initial load
   useEffect(()=>{holdings.forEach(async(h,idx)=>{if(h.ticker&&!h.price){const p=await fetchPrice(h.ticker);if(p){setHoldings(prev=>{const n=[...prev];n[idx].price=p;return n;});}}});},[holdings]);
 
   const alloc=aggregateAllocations(holdings);
 
-  const handleOptimise=()=>{
-    const opt=optimisePortfolio(risk,target,alloc);
-    setMetrics(calcMetrics(opt,target));
-    setRecs(recommendTickers(opt,risk));
+  const handleOptimise = async () => {
+    const alloc = aggregateAllocations(holdings);
+    const opt = optimisePortfolio(risk, alloc); // remove target here
+    setMetrics(calcMetrics(opt, target));
+  
+    const suggestions = await fetchGBoostRecs({ holdings, risk, target });
+    setRecs(suggestions); // [{ticker, reason, price, shares}, ...]
   };
 
   const update=(i:number,field:keyof Holding,val:any)=>{
