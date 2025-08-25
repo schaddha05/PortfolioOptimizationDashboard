@@ -1,6 +1,5 @@
 import * as math from 'mathjs';
-import quadprog from 'quadprog';
-
+import { solveQP } from 'quadprog';
 // ---------------------------------------------------------------------------
 // Mean-Variance Portfolio Optimizer (Quadratic Programming)
 // ---------------------------------------------------------------------------
@@ -21,45 +20,39 @@ export function meanVarianceOptimization(
 ): number[] {
   const n = mu.length;
 
-  // Dmat = 2 * Σ
-  const Dmat = math.multiply(sigma, 2) as number[][];
-  // dvec = zero vector
-  const dvec = math.zeros(n)._data as number[];
+  // Dmat = 2 * Σ  (plain number[][])
+  const Dmat: number[][] = sigma.map(row => row.map(v => 2 * v));
 
-  // Constraints: A^T x >= b
-  // We need equality constraints, so we set two rows:
-  // mu^T w >= targetReturn and -mu^T w >= -targetReturn
-  // sum(w)=1 and -sum(w)=-1
-  // But quadprog expects form: A^T x >= b
-  
-  const A: number[][] = [];
-  const b: number[] = [];
+  // dvec = zero vector (plain number[])
+  const dvec: number[] = new Array(n).fill(0);
 
-  // mu^T w == targetReturn -> split into >= and <=
-  A.push(mu);
-  b.push(targetReturn);
-  A.push(mu.map(v => -v));
-  b.push(-targetReturn);
+  // Constraints in quadprog form: minimize 1/2 x^T D x - d^T x  s.t.  A^T x ≥ b
+  // We'll use:
+  //   (1) sum(w) = 1              -> equality
+  //   (2) mu · w ≥ targetReturn   -> inequality
+  //   (3) w ≥ 0                   -> inequalities
 
-  // 1^T w == 1
-  const ones = Array(n).fill(1);
-  A.push(ones);
-  b.push(1);
-  A.push(ones.map(v => -v));
-  b.push(-1);
+  const ones = new Array(n).fill(1);
 
-  // w >= 0
-  for (let i = 0; i < n; i++) {
-    const ei = Array(n).fill(0);
-    ei[i] = 1;
-    A.push(ei);
-    b.push(0);
-  }
+  // Identity columns for w ≥ 0
+  const eyeCols: number[][] = Array.from({ length: n }, (_, i) => {
+    const col = new Array(n).fill(0);
+    col[i] = 1;
+    return col;
+  });
 
-  // quadprog solves: min .5 x'D x - d^T x s.t. C^T x >= b
-  const result = quadprog.solveQP(Dmat, dvec, math.transpose(A) as number[][], b);
-  if (result.message) {
-    console.warn('QP solver message:', result.message);
-  }
-  return result.solution;
+  // Amat is (n x m) = transpose of columns [ones, mu, I]
+  const Amat: number[][] = math.transpose([ones, mu, ...eyeCols]) as number[][];
+
+  // bvec aligns with those columns
+  const bvec: number[] = [1, targetReturn, ...new Array(n).fill(0)];
+
+  // One equality (sum(w)=1). 'mu·w ≥ target' and 'w ≥ 0' remain inequalities.
+  const meq = 1;
+
+  // Solve (note: we imported { solveQP }, so call it directly)
+  const res = solveQP(Dmat, dvec, Amat, bvec, meq);
+
+  // Return a plain array of weights
+  return Array.from(res.solution);
 }

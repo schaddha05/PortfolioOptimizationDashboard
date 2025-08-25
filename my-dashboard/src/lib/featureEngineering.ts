@@ -32,13 +32,52 @@ function sharpe(w: number[], mu: number[], cov: number[][]): number {
  * Approximate CVaR for a multivariate-normal portfolio.
  * For normal dist.: CVaR = mean - k * std, where k = φ/α with φ PDF, α = 1-CVaRLevel
  */
-function cvarNorm(w: number[], mu: number[], cov: number[][], alpha = CVAR_ALPHA): number {
+
+// --- helper: inverse CDF of standard normal (Acklam's approximation) ---
+function normInv(p: number): number {
+  // https://web.archive.org/web/20150910044701/http://home.online.no/~pjacklam/notes/invnorm/
+  const a1 = -39.69683028665376, a2 = 220.9460984245205, a3 = -275.9285104469687,
+        a4 = 138.3577518672690, a5 = -30.66479806614716, a6 =  2.506628277459239;
+  const b1 = -54.47609879822406, b2 = 161.5858368580409, b3 = -155.6989798598866,
+        b4 =  66.80131188771972, b5 = -13.28068155288572;
+  const c1 = -0.007784894002430293, c2 = -0.3223964580411365, c3 = -2.400758277161838,
+        c4 = -2.549732539343734, c5 =  4.374664141464968, c6 =  2.938163982698783;
+  const d1 =  0.007784695709041462, d2 =  0.3224671290700398, d3 =  2.445134137142996,
+        d4 =  3.754408661907416;
+
+  const plow = 0.02425, phigh = 1 - plow;
+  let q: number, r: number;
+
+  if (p < plow) {
+    q = Math.sqrt(-2 * Math.log(p));
+    return (((((c1*q + c2)*q + c3)*q + c4)*q + c5)*q + c6) /
+           ((((d1*q + d2)*q + d3)*q + d4)*q + 1);
+  }
+  if (phigh < p) {
+    q = Math.sqrt(-2 * Math.log(1 - p));
+    return -(((((c1*q + c2)*q + c3)*q + c4)*q + c5)*q + c6) /
+             ((((d1*q + d2)*q + d3)*q + d4)*q + 1);
+  }
+  q = p - 0.5; r = q*q;
+  return (((((a1*r + a2)*r + a3)*r + a4)*r + a5)*r + a6) * q /
+         (((((b1*r + b2)*r + b3)*r + b4)*r + b5)*r + 1);
+}
+
+// Approximate CVaR (Expected Shortfall) for a normal portfolio
+function cvarNorm(w: number[], mu: number[], cov: number[][]): number {
   const mean = portfolioReturn(w, mu);
-  const std = Math.sqrt(portfolioVariance(w, cov));
-  const z = math.quantile(1 - alpha, 'normal') as number; // VaR quantile
-  const pdf = math.exp(-0.5 * z * z) / Math.sqrt(2 * Math.PI);
-  const k = pdf / (1 - alpha);
-  return -(mean - std * k); // negative => loss
+  const var_ = portfolioVariance(w, cov);
+  const std  = Math.sqrt(Math.max(var_, 1e-12));
+
+  // one-sided 95% tail quantile of N(0,1)
+  const z   = normInv(CVAR_ALPHA);                  // ≈ 1.64485 for 0.95
+  const pdf = Math.exp(-0.5 * z * z) / Math.sqrt(2 * Math.PI);
+
+  // left-tail expected shortfall of returns
+  const es  = mean - std * (pdf / (1 - CVAR_ALPHA));
+
+  // return a positive risk number (loss)
+  return -es;
 }
 
 // ---------------------------------------------------------------------------
