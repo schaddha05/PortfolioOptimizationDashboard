@@ -2,7 +2,7 @@
 
 > A modern web app that helps an investor understand their portfolio, set a target return, and get **data-driven trade suggestions** that are tailored to the portfolio, not to tickers in isolation.
 
-![Dashboard](./PortfolioOptimizationDashboard/my-dashboard/DashboardPic.png)
+![Dashboard](./my-dashboard/DashboardPic.png)
 
 ## TL;DR
 - **Frontend:** A sleek Next.js dashboard where you enter holdings, a target return, and click **Optimize Portfolio**. You’ll see a clean summary plus suggested trades.
